@@ -1,0 +1,112 @@
+Temporary README for MPV-VJ3.
+
+usage: MPVVJServer.py [-h] [-q] [-v] [--mpv-path <PATH>]
+                      [--mpv-socket-path <PATH>] [--bind-address <address>]
+                      [--bind-port <port>]
+
+MPV-VJ3 - Remotely control mpv and manage playlists.
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -q, --quiet           Suppress all text output.
+  -v, --verbose         Verbose output.
+  --mpv-path <PATH>     Path to MPV executable.
+  --mpv-socket-path <PATH>
+                        Filename of socket to use for communicating with mpv.
+  --bind-address <address>
+                        Address to bind to.
+  --bind-port <port>    Port to bind to.
+
+
+usage: MPVVJCLI.py [-h] [--quiet] [--verbose] [--address <address>]
+                   [--port <port>] [-O ...] [-r] [-k] [-n <name>]
+                   [-D <playlist>] [-e <playlist>] [-l <playlist>]
+                   [-z <playlist>] [-a ...] [-d <range>] [-M MOVE]
+                   [-y <range>] [-Y <range>] [-j TRACK] [-J TRACKNUM] [-L]
+                   [-t <reltime>] [-T <time>] [-v VOL] [-V VOLUME] [-m]
+                   [-c <playlist>] [-P] [-s] [-p] [-f <format string>] [-S]
+                   [--clear] [--kill-server]
+
+MPV-VJ3 - Remotely control mpv and manage playlists with an mpvc-like
+interface.
+
+optional arguments:
+  -h, --help            show this help message and exit
+
+Client Options:
+  --quiet               Suppress all text output.
+  --verbose             Verbose output.
+  --address <address>   Address to connect to.
+  --port <port>         Port to connect to.
+
+MPV Actions:
+  -O ..., --mpv-opts ...
+                        Set mpv arguments. Must be last option. Format:
+                        <option[=value]> [option[=value]] ...
+  -r, --run             Run MPV.
+  -k, --kill            Kill MPV.
+
+Playlist Actions:
+  -n <name>, --new <name>
+                        Add a new playlist.
+  -D <playlist>, --delete <playlist>
+                        Delete a playlist.
+  -e <playlist>, --select <playlist>
+                        Select playlist to operate on.
+  -l <playlist>, --loop <playlist>
+                        Toggle playlist loop mode.
+  -z <playlist>, --shuffle <playlist>
+                        Toggle playlist shuffle mode.
+  -a ..., --add ...     Add files to selected playlist. Must be last option.
+                        Note the files need to be available from the remote
+                        mpv's location.
+  -d <range>, --delete-items <range>
+                        Delete items from playlist.
+  -M MOVE, --move MOVE  Move items from selected playlist. Format:
+                        <range>.[playlist,]pos>
+  -y <range>, --set-played <range>
+                        Flag files as played.
+  -Y <range>, --set-not-played <range>
+                        Flag files as not played.
+  -j TRACK, --track TRACK
+                        Go forwards/backwards through the playlist queue.
+  -J TRACKNUM, --tracknum TRACKNUM
+                        Jump to playlist item number.
+
+Playback Actions:
+  -L, --loopfile        Loop currently playing file.
+  -t <reltime>, --seek <reltime>
+                        Increase/decrease time relative to the current time.
+  -T <time>, --time <time>
+                        Set absolute time.
+  -v VOL, --vol VOL     Increase/decrease volume relative to the current
+                        volume.
+  -V VOLUME, --volume VOLUME
+                        Set absolute volume.
+  -m, --mute            Toggle muting.
+  -c <playlist>, --cue <playlist>
+                        Cue a playlist to play from next.
+  -P, --play            Play next cued item.
+  -s, --stop            Always stop playback.
+  -p, --toggle          Toggle playback.
+
+Information Actions:
+  -f <format string>, --format <format string>
+                        Enter a formatting string.
+  -S, --list            Print all playlists and tracks in selected playlist.
+
+Server Actions:
+  --clear               Clear all server state.
+  --kill-server         Kill server.
+
+<playlist> refers to a name of a playlist. <range> refers to a comma separated
+list of single values or ranges denoted by <start>-<end>. <format string>
+refers to a string containing replacement strings for various values. These
+include %file% %path% %title% %artist% %album% %artistalbum% %genre% %year%
+%status% %time% %precisetime% %length% %percentage% %speed% %playlistlength
+%position% %repeat% %single% %volume% %muted% %frame%. <time> refers to an
+absolute time in HH:MM:SS, MM:SS or SS format. Absolute times may be negative
+for some files. <reltime> refers to a relative time in HH:MM:SS, MM:SS or SS
+format. Reverse using negative values. May be called with no arguments for a
+generic status output.
+
