@@ -28,7 +28,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="MPV-VJ3 - Remotely control mpv and manage playlists with an mpvc-like interface.", epilog="""<playlist> refers to a name of a playlist.
 <range> refers to a comma separated list of single values or ranges denoted by <start>-<end>.
 <format string> refers to a string containing replacement strings for various values.  These include
-%file% %path% %title% %artist% %album% %artistalbum% %genre% %year% %status% %time% %precisetime% %length% %percentage% %speed% %playlistlength %position% %repeat% %single% %volume% %muted% %frame%.
+%file% %path% %title% %artist% %album% %artistalbum% %genre% %year% %status% %time% %precisetime% %length% %percentage% %speed% %playlistlength %position% %playlistslength% %currentname% %currentposition% %selectedname% %selectedposition% %repeat% %single% %volume% %muted% %frame%.
 <time> refers to an absolute time in HH:MM:SS, MM:SS or SS format.  Absolute times may be negative for some files.
 <reltime> refers to a relative time in HH:MM:SS, MM:SS or SS format.  Reverse using negative values.
 May be called with no arguments for a generic status output.""")
@@ -47,8 +47,8 @@ May be called with no arguments for a generic status output.""")
     playlistacts.add_argument('-n', '--new', type=str, metavar="<name>", help="Add a new playlist.")
     playlistacts.add_argument('-D', '--delete', type=str, metavar="<playlist>", help="Delete a playlist.")
     playlistacts.add_argument('-e', '--select', type=str, metavar="<playlist>", help="Select playlist to operate on.")
-    playlistacts.add_argument('-l', '--loop', type=str, metavar="<playlist>", help="Toggle playlist loop mode.")
-    playlistacts.add_argument('-z', '--shuffle', type=str, metavar="<playlist>", help="Toggle playlist shuffle mode.")
+    playlistacts.add_argument('-l', '--loop', action='store_true', help="Toggle playlist loop mode.")
+    playlistacts.add_argument('-z', '--shuffle', action='store_true', help="Toggle playlist shuffle mode.")
     playlistacts.add_argument('-a', '--add', type=str, nargs=argparse.REMAINDER, help="Add files to selected playlist.  Must be last option.  Note the files need to be available from the remote mpv's location.")
     playlistacts.add_argument('-d', '--delete-items', metavar="<range>", type=str, help="Delete items from playlist.")
     playlistacts.add_argument('-M', '--move', type=str, help="Move items from selected playlist.  Format: <range>.[playlist,]pos>")
@@ -118,10 +118,10 @@ May be called with no arguments for a generic status output.""")
                     request.selectPlaylist(args.select)
                     response = request.waitForResponse()
                 if response == True and args.loop:
-                    request.loop(args.loop)
+                    request.loop()
                     response = request.waitForResponse()
                 if response == True and args.shuffle:
-                    request.shuffle(args.shuffle)
+                    request.shuffle()
                     response = request.waitForResponse()
                 if response == True and args.add:
                     request.addItems(args.add)

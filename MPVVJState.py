@@ -41,7 +41,8 @@ class Playlist:
             raise TypeError
         self.name = name
         self.items = []
-        self.currentCue = -1
+        self.playingItem = None
+        self.currentCue = None
         self.loop = loop
         self.shuffle = shuffle
 
@@ -65,12 +66,20 @@ class Playlist:
         del self.items[item[0]]
 
     def insertEntry(self, value, played=False, idx=-1):
+        empty = False
+        if len(self) == 0:
+            empty = True
+
         if idx < 0:
             self.items.append(PlaylistEntry(value, played))
         else:
             self.items.insert(idx, PlaylistEntry(value, played))
-        if self.currentCue == -1:
-            self.currentCue = 0
+
+        if empty:
+            if self.shuffle:
+                self.currentCue = random.randrange(len(self))
+            else:
+                self.currentCue = 0
 
     def delEntryByIndex(self, idx):
         del self.items[idx]
@@ -95,9 +104,14 @@ class Playlist:
     def getCurrentItemName(self):
         return self.items[self.currentCue].name
 
+    def getPlayingItemName(self):
+        return self.items[self.playingItem].name
+
     def advance(self):
         if len(self) == 0:
             raise RuntimeError("Empty playlist.")
+
+        self.playingItem = self.currentCue
 
         # this function is only used for advancing after something has been played
         # so set this now
@@ -107,7 +121,7 @@ class Playlist:
             notPlayed = []
             for item in enumerate(self.items):  # select an entry that hasn't been played
                 if not item[1].played:
-                    notPlayed.append(entry[0])
+                    notPlayed.append(item[0])
 
             if len(notPlayed) == 0:
                 if self.loop:
@@ -115,7 +129,9 @@ class Playlist:
                         item.setPlayed(False)
                         self.currentCue = random.randrange(len(self))
                 else:
-                    self.currentCue = -1
+                    self.playingItem = None
+                    self.currentCue = None
+                    return False
             else:
                 self.currentCue = notPlayed[random.randrange(len(notPlayed))]
         else:
@@ -125,9 +141,12 @@ class Playlist:
                         item.setPlayed(False)
                     self.currentCue = 0
                 else:
-                    self.currentCue = -1
+                    self.playingItem = None
+                    self.currentCue = None
+                    return False
             else:
                 self.currentCue += 1
+        return True
 
     def setLooping(self, value=None):
         if value == None:
@@ -155,6 +174,7 @@ class MPVVJState:
         self.mpvopts = {}
         self.selectedPlaylist = None
         self.currentPlaylist = None
+        self.playingPlaylist = None
         self.interPlaylist = None
         self.interCurrentTime = 0
         self.interBreak = 0
@@ -172,15 +192,20 @@ class MPVVJState:
                 return pl
         raise KeyError
 
+    def getSelected(self):
+        if self.selectedPlaylist == None:
+            return None
+        return self.playlists[self.selectedPlaylist]
+
     def getCurrent(self):
         if self.currentPlaylist == None:
             return None
         return self.playlists[self.currentPlaylist]
 
-    def getSelected(self):
-        if self.selectedPlaylist == None:
+    def getPlaying(self):
+        if self.playingPlaylist == None:
             return None
-        return self.playlists[self.selectedPlaylist]
+        return self.playlists[self.playingPlaylist]
 
     def newPlaylist(self, name, loop, random):
         self.playlists.append(Playlist(name, loop, random))
@@ -355,10 +380,10 @@ class MPVVJState:
         if type(obj['items']) != list:
             return "'items' is not a list."
         for item in obj['items']:
-            if type(item) != str:
-                return "Item is not an string."
-            if item not in selected:
-                return "Item " + item + " not in playlist."
+            if type(item) != int:
+                return "Item is not an integer."
+            if item < 0 or item > len(selected) - 1:
+                return "Item " + int(item) + " out of range."
 
         for item in obj['items']:
             selected.delEntryByIndex(item)
@@ -515,11 +540,17 @@ class MPVVJState:
             selected.setPlayed(item, value)
         return None
 
-    def getCurrentPlayingName(self):
+    def getCurrentCuedName(self):
         try:
             return self.getCurrent().getCurrentItemName()
         except AttributeError:
             raise ValueError("No current playlist cued.")
+
+    def getCurrentPlayingName(self):
+        try:
+            return self.getPlaying().getPlayingItemName()
+        except AttributeError:
+            raise ValueError("Nothing playing.")
 
     def getCurrentPlaylistLength(self):
         try:
@@ -527,9 +558,27 @@ class MPVVJState:
         except AttributeError:
             raise ValueError("No current playlist cued.")
 
-    def getCurrentPlaylistPos(self):
+    def getCurrentPlaylistCuedPos(self):
         try:
             return self.getCurrent().currentCue
+        except AttributeError:
+            raise ValueError("No current playlist cued.")
+
+    def getCurrentPlaylistPlayingPos(self):
+        try:
+            return self.getCurrent().playingItem
+        except AttributeError:
+            raise ValueError("No current playlist cued.")
+
+    def getSelectedPlaylistCuedPos(self):
+        try:
+            return self.getSelected().currentCue
+        except AttributeError:
+            raise ValueError("No current playlist cued.")
+
+    def getSelectedPlaylistPlayingPos(self):
+        try:
+            return self.getSelected().playingItem
         except AttributeError:
             raise ValueError("No current playlist cued.")
 
@@ -558,11 +607,18 @@ class MPVVJState:
         self.loopFile = not self.loopFile
 
     def advance(self):
-        if self.currentPlaylist is None:  # no playlist selected
-            raise ValueError("No playlist selected.")
         current = self.getCurrent()
+        if current == None:  # no playlist selected
+            raise ValueError("No playlist selected.")
         if len(current) == 0:  # empty playlist selected
             raise ValueError("Empty playlist.")
         if self.loopFile:
             return
-        current.advance()
+        try:
+            self.getPlaying().playingItem = None
+        except AttributeError:
+            pass
+        if current.advance():
+            self.playingPlaylist = self.currentPlaylist
+        else:
+            self.playingPlaylist = None

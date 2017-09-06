@@ -22,7 +22,7 @@ def parseKeyValues(opts):
             equals = opt.index('=')
             optsList.append((opt[:equals], opt[equals+1:]))
         except ValueError:
-            optsList.append(opt, 'yes')
+            optsList.append((opt, 'yes'))
 
     return optsList
 
@@ -57,7 +57,7 @@ def parseRanges(items):
                     end = temp
                 itemList.extend(range(start, end))
             except ValueError: #single value
-                itemList.append(int(items[:comma]))
+                itemList.append(int(items))
             items = ''
 
     return itemList
@@ -83,3 +83,67 @@ def parseTime(time):
                     int(time[colon1+1:])) * sign
     except ValueError:
         return int(time) * sign
+
+def toTime(secs):
+    if secs == None:
+        return None
+
+    secs = float(secs)
+
+    sign = 1
+    if secs < 0:
+        sign = -1
+        secs = -secs
+
+    hours = int(secs / 60 / 60) * sign
+    mins = int(secs / 60 % 60)
+    secs = int(secs % 60)
+
+    return "{}:{:02}:{:02}".format(hours, mins, secs)
+
+def toPreciseTime(secs):
+    if secs == None:
+        return None
+
+    secs = float(secs)
+
+    sign = 1
+    if secs < 0:
+        sign = -1
+        secs = -secs
+
+    hours = int(secs / 60 / 60) * sign
+    mins = int(secs / 60 % 60)
+    secs = secs % 60
+
+    return "{}:{:02}:{:02}".format(hours, mins, secs)
+
+def boolYesNo(boolval):
+    if boolval == True:
+        return 'yes'
+    elif boolval == False:
+        return 'no'
+
+    return None
+
+def statusStr(status):
+    if status == True:
+        return "Paused"
+    elif status == False:
+        return "Playing"
+
+    return None
+
+def roundTenth(val):
+    if val == None:
+        return None
+
+    return str(round(float(val), 1))
+
+def numDigits(num):
+    digits = 1
+    while num >= 10:
+        num /= 10
+        digits += 1
+
+    return digits

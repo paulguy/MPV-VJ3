@@ -26,13 +26,13 @@ class MPVVJRequest:
     TIMEOUT_PERIOD = 45
     VERSION = 0
 
-    def print(self, text):
+    def print(self, text='', end='\n'):
         if not self.quiet:
-            print(text)
+            print(text, end=end)
 
-    def print_debug(self, text):
+    def print_debug(self, text='', end='\n'):
         if not self.quiet and self.verbose:
-            print(text)
+            print(text, end=end)
 
     def __init__(self, quiet, verbose):
         if type(quiet) != bool:
@@ -44,7 +44,7 @@ class MPVVJRequest:
         self.socket = None
         self.connectTime = 0
         self.lastAct = 0
-        self.formatStringParts = []
+        self.formatStringParts = None
         self.fd = None
 
     def connectStart(self, host, port):
@@ -57,7 +57,7 @@ class MPVVJRequest:
             return False
         if port < 1 or port > 65535:
             raise ValueError("'port' must be between 1 and 65535.")
-        self.print("Connecting to " + host + " (" + str(port) + ")...")
+        self.print_debug("Connecting to " + host + " (" + str(port) + ")...")
         try:
             self.socket = JSONSocket.JSONTCPSocket(listening=False, host=host, port=port)
         except ConnectionError as e:
@@ -259,20 +259,30 @@ class MPVVJRequest:
     def format(self, format):
         formatVars = []
         # find all replacements
+        self.formatStringParts = []
         while len(format) > 0:
             try: # find start of next replacement
                 percent1 = format.index('%')
                 try: # find the end
-                    percent2 = format.index('%')
+                    percent2 = format.index('%', percent1 + 1)
                     if percent2 - percent1 > 1:
-                        self.formatStringParts.append(format[:percent1])
+                        if len(self.formatStringParts) > 0 and len(self.formatStringParts[-1]) > 0 and self.formatStringParts[-1][-1] == '%':
+                            self.formatStringParts[-1] += format[:percent1]
+                        else:
+                            self.formatStringParts.append(format[:percent1])
                         formatVars.append(format[percent1+1:percent2])
                     else: # literal %
-                        self.formatStringParts.append(format[:percent2])
+                        if len(self.formatStringParts) > 0 and len(self.formatStringParts[-1]) > 0 and self.formatStringParts[-1][-1] == '%':
+                            self.formatStringParts[-1] += '%'
+                        else:
+                            self.formatStringParts.append('%')
                     format = format[percent2+1:]
                 except ValueError:
+                    self.formatStringParts = None
                     raise ValueError("Unterminated replacement.")
-            except ValueError: # none left
+            except ValueError as e: # none left
+                if e.args[0] == "Unterminated replacement.":
+                    raise e
                 self.formatStringParts.append(format)
                 format = ''
 
@@ -290,7 +300,7 @@ class MPVVJRequest:
     def status(self):
         self.format("""\
 %artist% - %title%
-[%status%] %position%/%playlistlength% %time%/%length% (%percentage%)
+[%status%] %position%/%playlistlength% %time%/%length% (%percentage%%%)
 speed: %speed%x volume: %volume%%% muted: %muted% repeat: %repeat% single: %single%""")
 
     def checkForResponse(self):
@@ -309,8 +319,140 @@ speed: %speed%x volume: %volume%%% muted: %muted% repeat: %repeat% single: %sing
                 self.lastAct = time.monotonic()
                 self.print_debug("server --> " + repr(obj))
                 if 'event' in obj:
+                    if obj['event'] == 'list':
+                        playlists = []
+                        playlist = None
+                        currentPlaylist = None
+                        playingPlaylist = None
+                        selectedPlaylist = None
+                        cued = None
+                        playing = None
+                        try:
+                            playlists = obj['playlists']
+                        except KeyError:
+                            pass
+                        try:
+                            playlist = obj['playlist']
+                        except KeyError:
+                            pass
+                        try:
+                            currentPlaylist = obj['current-playlist']
+                        except KeyError:
+                            pass
+                        try:
+                            playingPlaylist = obj['playing-playlist']
+                        except KeyError:
+                            pass
+                        try:
+                            selectedPlaylist = obj['selected-playlist']
+                        except KeyError:
+                            pass
+                        try:
+                            cued = obj['cued']
+                        except KeyError:
+                            pass
+                        try:
+                            playing = obj['playing']
+                        except KeyError:
+                            pass
+                        longest = 8
+                        for i in playlists:
+                            length = 0
+                            try:
+                                length = len(i['name'])
+                            except KeyError:
+                                i['name'] = "*** No name? ***"
+                                length = len(i['name'])
+                            longest = max(length, longest)
+                        self.print("L S S C P Playlist")
+                        self.print("- - - - - " + "{:-<{}}".format('', longest))
+                        for i in enumerate(playlists):
+                            try:
+                                if i[1]['loop']:
+                                    self.print("L ", end='')
+                                else:
+                                    self.print("  ", end='')
+                            except KeyError:
+                                self.print("  ", end='')
+                            try:
+                                if i[1]['shuffle']:
+                                    self.print("S ", end='')
+                                else:
+                                    self.print("  ", end='')
+                            except KeyError:
+                                self.print("  ", end='')
+                            if i[0] == selectedPlaylist:
+                                self.print("* ", end='')
+                            else:
+                                self.print("  ", end='')
+                            if i[0] == currentPlaylist:
+                                self.print("* ", end='')
+                            else:
+                                self.print("  ", end='')
+                            if i[0] == playingPlaylist:
+                                self.print("> ", end='')
+                            else:
+                                self.print("  ", end='')
+                            self.print(i[1]['name'])
+                        if playlist != None:
+                            digits = MPVVJUtils.numDigits(len(playlist))
+                            longest = 4
+                            for i in playlist:
+                                length = 0
+                                try:
+                                    length = len(i['name'])
+                                except KeyError:
+                                    i['name'] = "*** No name? ***"
+                                    length = len(i['name'])
+                                longest = max(length, longest)
+                            self.print()
+                            self.print("P C P " + "{:>{}}".format('#', digits) + " Name")
+                            self.print("- - - " + "{:-<{}} {:-<{}}".format('', digits, '', longest))
+                            for i in enumerate(playlist):
+                                try:
+                                    if i[1]['played']:
+                                        self.print("* ", end='')
+                                    else:
+                                        self.print("  ", end='')
+                                except KeyError:
+                                    self.print("  ", end='')
+                                if i[0] == cued:
+                                    self.print("* ", end='')
+                                else:
+                                    self.print("  ", end='')
+                                if i[0] == playing:
+                                    self.print("> ", end='')
+                                else:
+                                    self.print("  ", end='')
+                                self.print("{:>{}} ".format(i[0], digits), end='')
+                                try:
+                                    self.print(i[1]['name'])
+                                except KeyError:
+                                    self.print("*** No name? ***")
+                    elif obj['event'] == 'get-properties':
+                        if 'properties' in obj:
+                            if self.formatStringParts != None:
+                                while len(self.formatStringParts) > 0 and len(obj['properties']) > 0:
+                                    if len(self.formatStringParts) > 0:
+                                        self.print(self.formatStringParts[0], end='')
+                                        self.formatStringParts = self.formatStringParts[1:]
+                                    if len(obj['properties']) > 0:
+                                        self.print(str(obj['properties'][0]), end='')
+                                        obj['properties'] = obj['properties'][1:]
+                                self.print()
+                                self.formatStringParts = None
+                            else:
+                                raise ValueError("Got properties back unexpectedly")
+                        else:
+                            raise KeyError("'get-properties' without 'properties'")
+                    else:
+                        self.print(obj['event'] + " OK")
                     return True
                 if 'error' in obj:
+                    if 'message' in obj:
+                        self.print("Error: " + obj['message'])
+                    else:
+                        self.print("Unspecified error.")
                     return False
                 else:
                     raise ValueError("JSON statement with nothing to do.")

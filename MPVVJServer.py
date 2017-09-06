@@ -27,6 +27,7 @@ import argparse
 import MPVVJState
 import JSONSocket
 import MPV
+import MPVVJUtils
 
 # TODO
 # bugs and crashes
@@ -69,8 +70,8 @@ class MPVVJServer():
         'genre':        ('get_property',        'metadata/by-key/genre',        4),
         'year':         ('get_property',        'metadata/by-key/date',         5),
         'status':       ('get_property',        'pause',                        6),
-        'time':         ('get_property_string', 'time',                         7),
-        'precisetime':  ('get_property_string', 'time',                         8),
+        'time':         ('get_property_string', 'time-pos',                     7),
+        'precisetime':  ('get_property_string', 'time-pos',                     8),
         'length':       ('get_property',        'duration',                     9),
         'percentage':   ('get_property',        'percent-pos',                  10),
         'speed':        ('get_property_string', 'speed',                        11),
@@ -88,14 +89,14 @@ class MPVVJServer():
         3: ('albumartist',  None),
         4: ('genre',        None),
         5: ('year',         None),
-        6: ('status',       None),
-        7: ('time',         None),
-        8: ('precisetime',  None),
-        9: ('length',       None),
-        10: ('percentage',  None),
-        11: ('speed',       None),
-        12: ('volume',      None),
-        13: ('muted',       None),
+        6: ('status',       MPVVJUtils.statusStr),
+        7: ('time',         MPVVJUtils.toTime),
+        8: ('precisetime',  MPVVJUtils.toPreciseTime),
+        9: ('length',       MPVVJUtils.toTime),
+        10: ('percentage',  MPVVJUtils.roundTenth),
+        11: ('speed',       MPVVJUtils.roundTenth),
+        12: ('volume',      MPVVJUtils.roundTenth),
+        13: ('muted',       MPVVJUtils.boolYesNo),
         14: ('frame',       None)
     }
 
@@ -106,24 +107,6 @@ class MPVVJServer():
     def print_debug(self, text):
         if not self.quiet and self.verbose:
             print(text)
-
-    def requestReplacementVar(var):
-        propReq = self.MPV_PROPERTY_REQUEST[var]
-        self.mpv.sendCommand(propReq[0], propReq[1], propReq[2])
-
-    def setReplacementVar(reqID, data):
-        if self.neededProperties == None:
-            raise RuntimeError("Got data from MPV but no properties needed.")
-        prop = MPV_PROPERTY_SET[reqID]
-        for neededProp in enumerate(self.neededProperties):
-            if prop[0] == neededProp[1][0]:
-                if prop[1] != None:
-                    self.neededProperties[neededProp[0]] = (prop[0], prop[1](data))
-                else:
-                    if data == None:
-                        self.neededProperties[neededProp[0]] = (prop[0], REPLACEMENT_NONE)
-                    else:
-                        self.neededProperties[neededProp[0]] = (prop[0], data)
 
     def __init__(self, mpvPath, socketPath, bindAddress, port, quiet, verbose):
         self.mpvPath = mpvPath
@@ -212,11 +195,28 @@ class MPVVJServer():
         # since hopefully there's no other way for mpv to emit a 'start-file' event
         # we set this now so once mpv gets the event, we can tell the client which
         # item is playing.
-        current = self.state.getCurrentPlayingName()
+        current = self.state.getCurrentCuedName()
         if current is None:
             raise PlaylistStop
         self.mpv.play(current)
         self.state.advance()
+
+    def requestReplacementVar(self, var):
+        propReq = self.MPV_PROPERTY_REQUEST[var]
+        self.mpv.sendCommand(propReq[0], [propReq[1]], request_id=propReq[2])
+
+    def setReplacementVar(self, reqID, data):
+        if self.neededProperties == None:
+            raise RuntimeError("Got data from MPV but no properties needed.")
+        prop = self.MPV_PROPERTY_SET[reqID]
+        for neededProp in enumerate(self.neededProperties):
+            if prop[0] == neededProp[1][0]:
+                if prop[1] != None:
+                    data = prop[1](data)
+                if data == None:
+                    self.neededProperties[neededProp[0]] = (prop[0], self.REPLACEMENT_NONE)
+                else:
+                    self.neededProperties[neededProp[0]] = (prop[0], data)
 
     def sendPlaylists(self):
         self.sendEventResponse('new-playlists', {'playlists': self.state.getPlaylists()})
@@ -229,7 +229,10 @@ class MPVVJServer():
         self.sendEventResponse('set-mpv-opts', {'opts': self.state.mpvopts})
 
     def sendProperties(self):
-        self.sendEventResponse('get-properties', {'properties': self.neededProperties})
+        props = []
+        for prop in self.neededProperties:
+            props.append(prop[1])
+        self.sendEventResponse('get-properties', {'properties': props})
 
     def clientMpvUnexpectedTerminated(self):
         self.mpv.terminate()
@@ -239,6 +242,15 @@ class MPVVJServer():
         self.sendEventResponse('mpv-unexpected-termination')
 
     def tick(self):
+        def checkPropertiesFilled():
+            for prop in self.neededProperties:
+                if prop[1] == None:
+                    return
+            self.sendProperties()
+            self.neededProperties = None
+        if self.neededProperties != None:
+            checkPropertiesFilled()
+
         if self.mpv is not None:
             if self.mpv.checkMPVRunning():
                 if self.mpv.socket is None:
@@ -255,9 +267,10 @@ class MPVVJServer():
                         self.sendEventResponse("run-mpv")
                         self.connected = True
                     if self.neededProperties != None:
-                        for prop in self.neededProperties:
-                            if prop[1] == None:
-                                self.requestReplacementVar(prop[0])
+                        for prop in enumerate(self.neededProperties):
+                            if prop[1][1] == None and prop[1][2] == False:
+                                self.requestReplacementVar(prop[1][0])
+                                self.neededProperties[prop[0]] = (prop[1][0], prop[1][1], True)
                     try:
                         obj = self.mpv.getNextObj()
 
@@ -279,15 +292,6 @@ class MPVVJServer():
                                             self.setReplacementVar(obj['request_id'], obj['data'])
                                         else:
                                             self.setReplacementVar(obj['request_id'], None)
-
-                                        def checkPropertiesFilled():
-                                            for prop in self.neededProperties:
-                                                if prop[1] == None:
-                                                    return
-                                            self.sendProperties()
-                                            self.neededProperties = None
-
-                                        checkPropertiesFilled()
                                     else:
                                         if self.waitForCommand:
                                             if obj['error'] == 'success':
@@ -407,7 +411,7 @@ class MPVVJServer():
                     elif obj['command'] == 'toggle-looping':
                         command = obj['command']
                         del obj['command']
-                        ret = self.state.setPlaylistLooping()
+                        ret = self.state.togglePlaylistLooping()
                         if ret is not None:
                             self.sendFailureResponse(command + ": " + ret)
                         else:
@@ -415,7 +419,7 @@ class MPVVJServer():
                     elif obj['command'] == 'toggle-shuffle':
                         command = obj['command']
                         del obj['command']
-                        ret = self.state.setPlaylistShuffle()
+                        ret = self.state.togglePlaylistShuffle()
                         if ret is not None:
                             self.sendFailureResponse(command + ": " + ret)
                         else:
@@ -519,9 +523,12 @@ class MPVVJServer():
                             self.sendFailureResponse(command + ": No 'properties'.")
                         if type(obj['properties']) != list:
                             self.sendFailureResponse(command + ": 'properties' is not a list.")
+                        if len(obj['properties']) == 0:
+                            self.sendFailureResponse(command + ": 'properties' is empty.")
                         for prop in obj['properties']:
                             if type(prop) != str:
                                 self.sendFailureResponse(command + ": Property is not a string.")
+                        self.neededProperties = []
                         for prop in obj['properties']:
                             if prop == 'file':
                                 try:
@@ -532,69 +539,80 @@ class MPVVJServer():
                                     except ValueError:
                                         self.neededProperties.append((prop, name))
                                 except ValueError:
-                                    self.neededProperties.append((prop, REPLACEMENT_NONE))
+                                    self.neededProperties.append((prop, self.REPLACEMENT_NONE))
                             elif prop == 'path':
                                 try:
                                     self.neededProperties.append((prop, self.state.getCurrentPlayingName()))
                                 except ValueError:
-                                    self.neededProperties.append((prop, REPLACEMENT_NONE))
+                                    self.neededProperties.append((prop, self.REPLACEMENT_NONE))
                             elif prop == 'playlistlength':
                                 try:
-                                    self.neededProperties.append((prop, self.state.getCurrentPlaylistLength))
+                                    self.neededProperties.append((prop, self.state.getCurrentPlaylistLength()))
                                 except ValueError:
-                                    self.neededProperties.append((prop, REPLACEMENT_NONE))
+                                    self.neededProperties.append((prop, self.REPLACEMENT_NONE))
                             elif prop == 'position':
                                 try:
-                                    self.neededProperties.append((prop, self.state.getCurrentPlaylistPos()))
+                                    self.neededProperties.append((prop, self.state.getCurrentPlaylistPlayingPos()))
                                 except ValueError:
-                                    self.neededProperties.append((prop, REPLACEMENT_NONE))
+                                    self.neededProperties.append((prop, self.REPLACEMENT_NONE))
                             elif prop == 'playlistslength':
                                 try:
                                     self.neededProperties.append((prop, self.state.getPlaylistsCount()))
                                 except ValueError:
-                                    self.neededProperties.append((prop, REPLACEMENT_NONE))
+                                    self.neededProperties.append((prop, self.REPLACEMENT_NONE))
                             elif prop == 'currentname':
                                 try:
                                     self.neededProperties.append((prop, self.state.getCurrentPlaylistName()))
                                 except ValueError:
-                                    self.neededProperties.append((prop, REPLACEMENT_NONE))
+                                    self.neededProperties.append((prop, self.REPLACEMENT_NONE))
                             elif prop == 'currentposition':
                                 if self.state.currentPlaylist == None:
-                                    self.neededProperties.append((prop, REPLACEMENT_NONE))
+                                    self.neededProperties.append((prop, self.REPLACEMENT_NONE))
                                 else:
                                     self.neededProperties.append((prop, self.state.currentPlaylist))
                             elif prop == 'selectedname':
                                 try:
                                     self.neededProperties.append((prop, self.state.getSelectedPlaylistName()))
                                 except ValueError:
-                                    self.neededProperties.append((prop, REPLACEMENT_NONE))
+                                    self.neededProperties.append((prop, self.REPLACEMENT_NONE))
                             elif prop == 'selectedposition':
                                 if self.state.selectedPlaylist == None:
-                                    self.neededProperties.append((prop, REPLACEMENT_NONE))
+                                    self.neededProperties.append((prop, self.REPLACEMENT_NONE))
                                 else:
                                     self.neededProperties.append((prop, self.state.selectedPlaylist))
                             elif prop == 'repeat':
                                 try:
-                                    self.neededProperties.append((prop, self.state.getCurrentPlaylistLooping()))
+                                    self.neededProperties.append((prop, MPVVJUtils.boolYesNo(self.state.getCurrentPlaylistLooping())))
                                 except ValueError:
-                                    self.neededProperties.append((prop, REPLACEMENT_NONE))
+                                    self.neededProperties.append((prop, self.REPLACEMENT_NONE))
                             elif prop == 'single':
-                                self.neededProperties.append((prop, self.state.loopFile))
+                                self.neededProperties.append((prop, MPVVJUtils.boolYesNo(self.state.loopFile)))
                             else:
-                                self.neededProperties.append((prop, None))
+                                if prop not in self.MPV_PROPERTY_REQUEST:
+                                    self.sendFailureResponse(command + ": Unrecognized property: " + prop)
+                                    self.neededProperties = None
+                                    break
+                                else:
+                                    self.neededProperties.append((prop, None, False))
                     elif obj['command'] == 'list':
                         command = obj['command']
                         playlists = self.state.getPlaylists()
                         playlist = self.state.getPlaylist()
                         currentPlaylist = self.state.currentPlaylist
+                        playingPlaylist = self.state.playingPlaylist
                         selectedPlaylist = self.state.selectedPlaylist
-                        currentItem = None
+                        selectedCued = None
                         try:
-                            currentItem = self.state.getCurrentPlaylistPos()
+                            selectedCued = self.state.getSelectedPlaylistCuedPos()
+                        except ValueError:
+                            pass
+                        selectedPlaying = None
+                        try:
+                            selectedPlaying = self.state.getSelectedPlaylistPlayingPos()
                         except ValueError:
                             pass
 
-                        resp = {'playlists': playlists, 'current': currentPlaylist, 'selected': selectedPlaylist, 'item': currentItem}
+                        resp = {'playlists': playlists, 'current-playlist': currentPlaylist, 'playing-playlist': playingPlaylist, 'selected-playlist': selectedPlaylist, 'cued': selectedCued, 'playing': selectedPlaying}
 
                         if playlist != None:
                             resp['playlist'] = playlist
