@@ -253,7 +253,7 @@ class MPVVJRequest:
             except ValueError:
                 raise ValueError("'pos' must be an integer.")
 
-        moveList = MPVVJUtils.parseRange(args)
+        moveList = MPVVJUtils.parseRanges(args)
         self.sendCommand('move-items', {'items': moveList, 'playlist': playlist, 'location': dest})
 
     def format(self, format):

@@ -35,27 +35,27 @@ def parseRanges(items):
         try:
             comma = items.index(',')
             try:
-                dash = items.index('-')
+                dash = items.index('-', 0, comma)
                 start = int(items[:dash])
                 end = int(items[dash+1:comma])
-                if start < end:
+                if start > end:
                     temp = start
                     start = end
                     end = temp
-                itemList.extend(range(start, end))
+                itemList.extend(range(start, end + 1))
             except ValueError: #single value
-                itemList.append(int(items[:dash]))
+                itemList.append(int(items[:comma]))
             items = items[comma+1:]
         except ValueError: #no comma, last entry
             try:
                 dash = items.index('-')
                 start = int(items[:dash])
-                end = int(items[dash+1:comma])
-                if start < end:
+                end = int(items[dash+1:])
+                if start > end:
                     temp = start
                     start = end
                     end = temp
-                itemList.extend(range(start, end))
+                itemList.extend(range(start, end + 1))
             except ValueError: #single value
                 itemList.append(int(items))
             items = ''

@@ -199,6 +199,7 @@ class MPVVJServer():
         if current is None:
             raise PlaylistStop
         self.mpv.play(current)
+        self.state.setCurrentPlaying()
         self.state.advance()
 
     def requestReplacementVar(self, var):
@@ -241,6 +242,10 @@ class MPVVJServer():
         self.playing = False
         self.sendEventResponse('mpv-unexpected-termination')
 
+    def stop(self):
+        self.state.stop()
+        self.playing = False
+
     def tick(self):
         def checkPropertiesFilled():
             for prop in self.neededProperties:
@@ -282,7 +287,10 @@ class MPVVJServer():
                                         try:
                                             self.playCurrentAndAdvance()
                                         except PlaylistStop:
-                                            self.playing = False
+                                            self.stop()
+                                        except ValueError as e:
+                                            self.stop()
+                                            self.print("State error: " + e.args[0])
                                 elif obj['event'] == 'start-file':
                                     self.playing = True
                             elif 'error' in obj:
@@ -490,14 +498,14 @@ class MPVVJServer():
                         command = obj['command']
                         if self.mpv is not None:
                             try:
-                                try:
-                                    self.playCurrentAndAdvance()
-                                except ValueError as e:
-                                    self.sendFailureResponse(command + ": " + e.args[0])
+                                self.playCurrentAndAdvance()
                                 self.playing = True
                                 self.sendEventResponse(command)
+                            except ValueError as e:
+                                self.stop()
+                                self.sendFailureResponse(command + ": " + e.args[0])
                             except PlaylistStop:
-                                self.playing = False
+                                self.stop()
                                 self.sendFailureResponse(command + ": End of playlist reached.")
                         else:
                             self.sendFailureResponse(command + ": MPV isn't running.")

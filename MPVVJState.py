@@ -81,12 +81,20 @@ class Playlist:
             else:
                 self.currentCue = 0
 
-    def delEntryByIndex(self, idx):
-        del self.items[idx]
+    def noneEntryByIndex(self, idx):
+        self.items[idx] = None
         if idx == self.currentCue:
             self.currentCue = -1
         elif idx < self.currentCue:
             self.currentCue -= 1
+
+    def deleteNones(self):
+        while True:
+            try:
+                idx = self.items.index(None)
+                del self.items[idx]
+            except ValueError:
+                break
 
     def getItems(self):
         items = []
@@ -102,16 +110,24 @@ class Playlist:
         self.currentCue = idx
 
     def getCurrentItemName(self):
+        if self.currentCue == None:
+            return None
         return self.items[self.currentCue].name
 
     def getPlayingItemName(self):
+        if self.playingItem == None:
+            return None
         return self.items[self.playingItem].name
+
+    def setCurrentPlaying(self):
+        self.playingItem = self.currentCue
+
+    def stop(self):
+        self.playingItem = None
 
     def advance(self):
         if len(self) == 0:
-            raise RuntimeError("Empty playlist.")
-
-        self.playingItem = self.currentCue
+            raise ValueError("Empty playlist.")
 
         # this function is only used for advancing after something has been played
         # so set this now
@@ -129,9 +145,7 @@ class Playlist:
                         item.setPlayed(False)
                         self.currentCue = random.randrange(len(self))
                 else:
-                    self.playingItem = None
                     self.currentCue = None
-                    return False
             else:
                 self.currentCue = notPlayed[random.randrange(len(notPlayed))]
         else:
@@ -141,12 +155,9 @@ class Playlist:
                         item.setPlayed(False)
                     self.currentCue = 0
                 else:
-                    self.playingItem = None
                     self.currentCue = None
-                    return False
             else:
                 self.currentCue += 1
-        return True
 
     def setLooping(self, value=None):
         if value == None:
@@ -257,20 +268,29 @@ class MPVVJState:
         return None
 
     def deletePlaylist(self, idx):
-        if self.currentPlaylist == idx:
-            self.currentPlaylist = None
-        elif self.currentPlaylist > idx:
-            self.currentPlaylist -= 1
+        if self.currentPlaylist != None:
+            if self.currentPlaylist == idx:
+                self.currentPlaylist = None
+            elif self.currentPlaylist > idx:
+                self.currentPlaylist -= 1
 
-        if self.currentPlaylist == idx:
-            self.currentPlaylist = None
-        elif self.currentPlaylist > idx:
-            self.currentPlaylist -= 1
+        if self.selectedPlaylist != None:
+            if self.selectedPlaylist == idx:
+                self.selectedPlaylist = None
+            elif self.selectedPlaylist > idx:
+                self.selectedPlaylist -= 1
 
-        if self.interPlaylist == idx:
-            self.interPlaylist = None
-        elif self.interPlaylist > idx:
-            self.interPlaylist -= 1
+        if self.playingPlaylist != None:
+            if self.playingPlaylist == idx:
+                self.playingPlaylist = None
+            elif self.playingPlaylist > idx:
+                self.playingPlaylist -= 1
+
+        if self.interPlaylist != None:
+            if self.interPlaylist == idx:
+                self.interPlaylist = None
+            elif self.interPlaylist > idx:
+                self.interPlaylist -= 1
 
         del self.playlists[idx]
 
@@ -341,7 +361,7 @@ class MPVVJState:
                 location = obj['location']
                 playlistLen = len(selected)
                 if location < -playlistLen - 1 or location > playlistLen:
-                    return "'location'=" + location + " out of range."
+                    return "'location'=" + str(location) + " out of range."
         except KeyError:
             pass
         for item in obj['items']:
@@ -383,10 +403,11 @@ class MPVVJState:
             if type(item) != int:
                 return "Item is not an integer."
             if item < 0 or item > len(selected) - 1:
-                return "Item " + int(item) + " out of range."
+                return "Item " + str(item) + " out of range."
 
         for item in obj['items']:
-            selected.delEntryByIndex(item)
+            selected.noneEntryByIndex(item)
+        selected.deleteNones()
         return None
 
     def setPlaylistCurrentItemRelative(self, obj):
@@ -451,26 +472,31 @@ class MPVVJState:
 
         playlist = None
         try:
-            if type(obj['playlist']) != str:
-                return "'playlist' is not a string."
+            if obj['playlist'] != None and type(obj['playlist']) != str:
+                return "'playlist' is not a string or None."
             try:
-                playlist = self[obj['playlist']][0]
+                playlist = obj['playlist']
             except KeyError:
-                return "Playlist " + obj['playlist'] + " does not exist."
+                return obj['playlist'] + " does not exist."
         except KeyError:
-            playlist = self.selectedPlaylist
+            pass
+
+        if playlist == None:        
+            playlist = selected
+        else:
+            playlist = self[playlist][1]
 
         srcPlaylistLen = len(selected)
-        destPlaylistLen = len(self.playlists[playlist])
+        destPlaylistLen = len(playlist)
 
-        location = len(self.playlists[playlist])
+        location = len(playlist)
         try:
             if type(obj['location']) != int:
                 return "'location' is not an integer."
             else:
                 location = obj['location']
                 if location < -destPlaylistLen - 1 or location > destPlaylistLen:
-                    return "'location'=" + location + " out of range."
+                    return "'location'=" + str(location) + " out of range."
         except KeyError:
             pass        
 
@@ -487,13 +513,12 @@ class MPVVJState:
 
         items = []
         for item in obj['items']:
-            items.append(selected.entries[item].item)
-
-        for item in obj['items']:
-            selected.delEntryByIndex(item)
+            items.append(selected.items[item])
+            selected.noneEntryByIndex(item)
+        selected.deleteNones()
 
         for item in items:
-            self.playlists[playlist].insertEntry(item['name'], False, location)
+            playlist.insertEntry(item.name, False, location)
             if location >= 0:
                 location += 1
             else:
@@ -527,7 +552,7 @@ class MPVVJState:
             if type(item) != int:
                 return "Item isn't an int."
             if item < -playlistLen or item > playlistLen - 1:
-                return "Index " + item + " is out of range."
+                return "Index " + str(item) + " is out of range."
 
         value = None
         try:
@@ -606,19 +631,25 @@ class MPVVJState:
     def toggleFileLooping(self):
         self.loopFile = not self.loopFile
 
+    def setCurrentPlaying(self):
+        try:
+            self.getCurrent().setCurrentPlaying()
+        except AttributeError:
+            raise ValueError("No current playlist cued.")
+        self.playingPlaylist = self.currentPlaylist
+
+    def stop(self):
+        try:
+            self.getPlaying().stop()
+        except AttributeError:
+            raise ValueError("No current playlist cued.")
+        self.playingPlaylist = None
+
     def advance(self):
         current = self.getCurrent()
         if current == None:  # no playlist selected
             raise ValueError("No playlist selected.")
-        if len(current) == 0:  # empty playlist selected
-            raise ValueError("Empty playlist.")
         if self.loopFile:
             return
-        try:
-            self.getPlaying().playingItem = None
-        except AttributeError:
-            pass
-        if current.advance():
-            self.playingPlaylist = self.currentPlaylist
-        else:
-            self.playingPlaylist = None
+        current.advance()
+
