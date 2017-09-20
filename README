@@ -1,10 +1,38 @@
-Temporary README for MPV-VJ3.
+MPVVJServer and MPVVJCLI: Control MPV remotely with multiple playlists and TV
+Mode
 
-usage: MPVVJServer.py [-h] [-q] [-v] [--mpv-path <PATH>]
-                      [--mpv-socket-path <PATH>] [--bind-address <address>]
-                      [--bind-port <port>]
+Most of the commands are pretty descriptive.  Typically how this program will be
+used is by creating a new playlist, selecting it, adding items to it and
+possibly making it looping or shuffle order.  Maybe cueing up an item to start
+from, cueing up the playlist, setting mpv options and starting mpv and starting
+playback.  You'll probably want to write a script to do this and you'll likely
+want to put a sleep between each command to give the socket time to reopen.  I
+have had good luck with 0.5 seconds between invocations.  Multiple commands may
+be given at once.  They're evaluated in the order given, though ones marked as
+needing to be last obviously can't have any options following them.  From there
+you may add other playlists and items to them.  This program mimicks a lot of
+the functionality from MPVC, with various extensions to support the multiple
+playlists, TV mode and remote control.  There will be differences between this
+and that, and being over a network socket means it'll be a bit slower to react.
 
-MPV-VJ3 - Remotely control mpv and manage playlists.
+TV Mode
+
+To use this you just need to select an intermission playlist in addition to your
+already cued main playlist, then toggle it on.  Intervals for the time which the
+main program and intermission should play may be set.  They are both 0 by
+default.
+
+Unfortunately, this is a bit complicated due to previous design decisions for
+this program which would require a lot of rewriting to undo and would still
+require different code to handle normal and TV mode more completely.  For now
+the interval is a bit quirky, because whether to jump to the next item is
+evaluated at the start of each item, so if the time hasn't elapsed yet, but will
+elapse by the end of an item, an additional item will be played.  A minimum of
+2 items will always be played unless you set an interval to 0, in which case 1
+item will always be played before alternating to the other list.
+
+
+USAGE for MPVVJServer.py
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -18,17 +46,7 @@ optional arguments:
   --bind-port <port>    Port to bind to.
 
 
-usage: MPVVJCLI.py [-h] [--quiet] [--verbose] [--address <address>]
-                   [--port <port>] [-O ...] [-r] [-k] [-n <name>]
-                   [-D <playlist>] [-e <playlist>] [-l <playlist>]
-                   [-z <playlist>] [-a ...] [-d <range>] [-M MOVE]
-                   [-y <range>] [-Y <range>] [-j TRACK] [-J TRACKNUM] [-L]
-                   [-t <reltime>] [-T <time>] [-v VOL] [-V VOLUME] [-m]
-                   [-c <playlist>] [-P] [-s] [-p] [-f <format string>] [-S]
-                   [--clear] [--kill-server]
-
-MPV-VJ3 - Remotely control mpv and manage playlists with an mpvc-like
-interface.
+USAGE for MPVVJCLI.py
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -53,17 +71,15 @@ Playlist Actions:
                         Delete a playlist.
   -e <playlist>, --select <playlist>
                         Select playlist to operate on.
-  -l <playlist>, --loop <playlist>
-                        Toggle playlist loop mode.
-  -z <playlist>, --shuffle <playlist>
-                        Toggle playlist shuffle mode.
+  -l, --loop            Toggle playlist loop mode.
+  -z, --shuffle         Toggle playlist shuffle mode.
   -a ..., --add ...     Add files to selected playlist. Must be last option.
                         Note the files need to be available from the remote
                         mpv's location.
   -d <range>, --delete-items <range>
                         Delete items from playlist.
   -M MOVE, --move MOVE  Move items from selected playlist. Format:
-                        <range>.[playlist,]pos>
+                        <range>.[playlist,]<pos>
   -y <range>, --set-played <range>
                         Flag files as played.
   -Y <range>, --set-not-played <range>
@@ -98,15 +114,51 @@ Information Actions:
 Server Actions:
   --clear               Clear all server state.
   --kill-server         Kill server.
+  --tv-intervals TV_INTERVALS TV_INTERVALS
+                        TV mode intervals in seconds. 1st: Main program 2nd:
+                        Intermission
+  --tv-playlist <playlist>
+                        Set TV mode playlist.
+  --tv-mode             Toggle TV mode.
 
-<playlist> refers to a name of a playlist. <range> refers to a comma separated
-list of single values or ranges denoted by <start>-<end>. <format string>
-refers to a string containing replacement strings for various values. These
-include %file% %path% %title% %artist% %album% %artistalbum% %genre% %year%
-%status% %time% %precisetime% %length% %percentage% %speed% %playlistlength
-%position% %repeat% %single% %volume% %muted% %frame%. <time> refers to an
-absolute time in HH:MM:SS, MM:SS or SS format. Absolute times may be negative
-for some files. <reltime> refers to a relative time in HH:MM:SS, MM:SS or SS
-format. Reverse using negative values. May be called with no arguments for a
-generic status output.
+<playlist> refers to a name of a playlist.
+<range> refers to a comma separated list of single values or ranges denoted by
+<start>-<end>.
+<format string> refers to a string containing replacement strings for various
+values. These include:
+%file% - File name
+%path% - Full path and file name
+%title% - Metadata title
+%artist% - Metadata artist
+%album% - Metadata album
+%artistalbum% - Metadata artistalbum
+%genre% - Metadata genre
+%year% - Metadata year
+%status% - playing or stopped
+%time% - Time to nearest second
+%precisetime% - Time with full precision from mpv
+%length% - Total length of item
+%percentage% - Percentage played
+%speed% - Speed at which the media is being played
+%playlistlength% - Length of playing playlist
+%position% - Position within playing playlist
+%playlistslength% - Length of playlists list
+%currentname% - Name of cued playlist
+%currentposition% - Position within cued playlist
+%selectedname% - Name of selected playlist
+%selectedposition% - Position within selected playlist
+%repeat% - Whether the playing playlist will loop
+%single% - Whether the playing item will loop
+%volume% - Volume from mpv
+%muted% - Whether mpv is muted
+%frame% - Current frame of video
+%maininterval% - Set interval for main program
+%interinterval% - Set interval for intermission
+%interplaylist% - Name of intermission playlist
+%tvmode% - Whether TV mode is enabled
+<time> refers to an absolute time in HH:MM:SS, MM:SS or SS format.
+Absolute times may be negative for some files.
+<reltime> refers to a relative time in HH:MM:SS, MM:SS or SS format. Reverse
+using negative values.
 
+May be called with no arguments for a generic status output.

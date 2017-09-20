@@ -28,7 +28,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="MPV-VJ3 - Remotely control mpv and manage playlists with an mpvc-like interface.", epilog="""<playlist> refers to a name of a playlist.
 <range> refers to a comma separated list of single values or ranges denoted by <start>-<end>.
 <format string> refers to a string containing replacement strings for various values.  These include
-%file% %path% %title% %artist% %album% %artistalbum% %genre% %year% %status% %time% %precisetime% %length% %percentage% %speed% %playlistlength %position% %playlistslength% %currentname% %currentposition% %selectedname% %selectedposition% %repeat% %single% %volume% %muted% %frame%.
+%file% %path% %title% %artist% %album% %artistalbum% %genre% %year% %status% %time% %precisetime% %length% %percentage% %speed% %playlistlength% %position% %playlistslength% %currentname% %currentposition% %selectedname% %selectedposition% %repeat% %single% %volume% %muted% %frame% %maininterval% %interinterval% %interplaylist% %tvmode%.
 <time> refers to an absolute time in HH:MM:SS, MM:SS or SS format.  Absolute times may be negative for some files.
 <reltime> refers to a relative time in HH:MM:SS, MM:SS or SS format.  Reverse using negative values.
 May be called with no arguments for a generic status output.""")
@@ -73,6 +73,9 @@ May be called with no arguments for a generic status output.""")
     serveracts = parser.add_argument_group(title="Server Actions")
     serveracts.add_argument('--clear', action='store_true', help="Clear all server state.")
     serveracts.add_argument('--kill-server', action='store_true', help="Kill server.")
+    serveracts.add_argument('--tv-intervals', type=int, nargs=2, help="TV mode intervals in seconds.  1st: Main program  2nd: Intermission")
+    serveracts.add_argument('--tv-playlist', type=str, metavar='<playlist>', help="Set TV mode playlist.")
+    serveracts.add_argument('--tv-mode', action='store_true', help="Toggle TV mode.")
 
     args = parser.parse_args()
 
@@ -98,7 +101,8 @@ May be called with no arguments for a generic status output.""")
                 args.move or args.set_played or args.set_not_played or args.track != None or args.tracknum != None or
                 args.loopfile or args.seek or args.time or args.vol != None or args.volume != None or
                 args.mute or args.cue or args.play or args.stop or args.toggle or
-                args.format or args.list or args.clear or args.kill_server):
+                args.format or args.list or args.clear or args.kill_server or args.tv_intervals or
+                args.tv_playlist or args.tv_mode):
                 if args.mpv_opts:
                     request.mpvOpts(args.mpv_opts)
                     response = request.waitForResponse()
@@ -185,6 +189,15 @@ May be called with no arguments for a generic status output.""")
                     response = request.waitForResponse()
                 if response == True and args.kill_server:
                     request.killServer()
+                    response = request.waitForResponse()
+                if response == True and args.tv_intervals:
+                    request.TVIntervals(args.tv_intervals)
+                    response = request.waitForResponse()
+                if response == True and args.tv_playlist:
+                    request.TVPlaylist(args.tv_playlist)
+                    response = request.waitForResponse()
+                if response == True and args.tv_mode:
+                    request.TVMode()
                     response = request.waitForResponse()
             else:
                 request.status()

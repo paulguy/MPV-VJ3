@@ -17,6 +17,7 @@
 
 
 import random
+import time
 
 
 class PlaylistEntry:
@@ -83,10 +84,11 @@ class Playlist:
 
     def noneEntryByIndex(self, idx):
         self.items[idx] = None
-        if idx == self.currentCue:
-            self.currentCue = -1
-        elif idx < self.currentCue:
-            self.currentCue -= 1
+        if self.currentCue != None:
+            if idx == self.currentCue:
+                self.currentCue = -1
+            elif idx < self.currentCue:
+                self.currentCue -= 1
 
     def deleteNones(self):
         while True:
@@ -182,14 +184,16 @@ class Playlist:
 class MPVVJState:
     def __init__(self):
         self.playlists = []
-        self.mpvopts = {}
         self.selectedPlaylist = None
         self.currentPlaylist = None
         self.playingPlaylist = None
         self.interPlaylist = None
-        self.interCurrentTime = 0
-        self.interBreak = 0
+        self.TVMainTime = 0
+        self.TVInterTime = 0
         self.loopFile = False
+        self.TVMode = False
+        self.lastMain = None
+        self.lastInter = None
 
     def __contains__(self, key):
         for pl in self.playlists:
@@ -217,6 +221,11 @@ class MPVVJState:
         if self.playingPlaylist == None:
             return None
         return self.playlists[self.playingPlaylist]
+
+    def getInter(self):
+        if self.interPlaylist == None:
+            return None
+        return self.playlists[self.interPlaylist]
 
     def newPlaylist(self, name, loop, random):
         self.playlists.append(Playlist(name, loop, random))
@@ -566,6 +575,17 @@ class MPVVJState:
         return None
 
     def getCurrentCuedName(self):
+        if self.TVMode:
+            if self.lastMain != None or (self.lastMain == None and self.lastInter == None):
+                try:
+                    return self.getCurrent().getCurrentItemName()
+                except AttributeError:
+                    raise ValueError("No current playlist cued.")
+            elif self.lastInter != None:
+                try:
+                    return self.getInter().getCurrentItemName()
+                except AttributeError:
+                    raise ValueError("No current playlist cued.")
         try:
             return self.getCurrent().getCurrentItemName()
         except AttributeError:
@@ -624,7 +644,7 @@ class MPVVJState:
 
     def getCurrentPlaylistLooping(self):
         try:
-            return self.getSelected().loop
+            return self.getCurrent().loop
         except AttributeError:
             raise ValueError("No selected playlist.")
 
@@ -632,11 +652,56 @@ class MPVVJState:
         self.loopFile = not self.loopFile
 
     def setCurrentPlaying(self):
+        if self.TVMode:
+            if self.lastMain != None or (self.lastMain == None and self.lastInter == None):
+                try:
+                    self.getCurrent().setCurrentPlaying()
+                except AttributeError:
+                    raise ValueError("No current playlist cued.")
+                self.playingPlaylist = self.currentPlaylist
+                return
+            elif self.lastInter != None:
+                try:
+                    self.getInter().setCurrentPlaying()
+                except AttributeError:
+                    raise ValueError("No intermission playlist selected.")
+                self.playingPlaylist = self.interPlaylist
+                return
         try:
             self.getCurrent().setCurrentPlaying()
         except AttributeError:
             raise ValueError("No current playlist cued.")
         self.playingPlaylist = self.currentPlaylist
+
+    def setIntervals(self, main, inter):
+        if type(main) != int or type(inter) != int:
+            return "Interval is not an int."
+        if main < 0 or inter < 0:
+            return "Intervals must be greater than or equal to 0."
+        self.TVMainTime = main
+        self.TVInterTime = inter
+
+        return None
+
+    def setInterPlaylist(self, playlist):
+        if type(playlist) != str:
+            return "Playlist is not a string."
+        pl = None
+        try:
+            pl = self[playlist]
+        except KeyError:
+            return "Playlist " + playlist + " does not exist."
+
+        self.interPlaylist = pl[0]
+        return None
+
+    def toggleTVMode(self):
+        inter = self.getInter()
+        if inter == None:
+            raise ValueError("No intermission playlist selected.")        
+        self.TVMode = not self.TVMode
+        self.lastInter = None
+        self.lastMain = None
 
     def stop(self):
         try:
@@ -651,5 +716,30 @@ class MPVVJState:
             raise ValueError("No playlist selected.")
         if self.loopFile:
             return
+        if self.TVMode:
+            inter = self.getInter()
+            if inter == None:
+                raise ValueError("No intermission playlist selected.")
+            if self.lastMain != None:
+                if time.monotonic() - self.lastMain < self.TVMainTime:
+                    current.advance()
+                else:
+                    inter.advance()
+                    self.lastInter = time.monotonic()
+                    self.lastMain = None
+                return
+            elif self.lastInter != None:
+                if time.monotonic() - self.lastInter < self.TVInterTime:
+                    inter.advance()
+                else:
+                    current.advance()
+                    self.lastMain = time.monotonic()
+                    self.lastInter = None
+                return
+            else:
+                current.advance()
+                self.lastMain = time.monotonic()
+                return
+
         current.advance()
 

@@ -297,6 +297,15 @@ class MPVVJRequest:
     def killServer(self):
         self.sendCommand('kill')
 
+    def TVIntervals(self, intervals):
+        self.sendCommand('tv-intervals', {'intervals': intervals})
+
+    def TVPlaylist(self, playlist):
+        self.sendCommand('tv-playlist', {'playlist': playlist})
+
+    def TVMode(self):
+        self.sendCommand('tv-mode')
+
     def status(self):
         self.format("""\
 %artist% - %title%
@@ -325,6 +334,7 @@ speed: %speed%x volume: %volume%%% muted: %muted% repeat: %repeat% single: %sing
                         currentPlaylist = None
                         playingPlaylist = None
                         selectedPlaylist = None
+                        interPlaylist = None
                         cued = None
                         playing = None
                         try:
@@ -348,6 +358,10 @@ speed: %speed%x volume: %volume%%% muted: %muted% repeat: %repeat% single: %sing
                         except KeyError:
                             pass
                         try:
+                            interPlaylist = obj['inter-playlist']
+                        except KeyError:
+                            pass
+                        try:
                             cued = obj['cued']
                         except KeyError:
                             pass
@@ -364,8 +378,8 @@ speed: %speed%x volume: %volume%%% muted: %muted% repeat: %repeat% single: %sing
                                 i['name'] = "*** No name? ***"
                                 length = len(i['name'])
                             longest = max(length, longest)
-                        self.print("L S S C P Playlist")
-                        self.print("- - - - - " + "{:-<{}}".format('', longest))
+                        self.print("L S S C I P Playlist")
+                        self.print("- - - - - -" + "{:-<{}}".format('', longest))
                         for i in enumerate(playlists):
                             try:
                                 if i[1]['loop']:
@@ -386,6 +400,10 @@ speed: %speed%x volume: %volume%%% muted: %muted% repeat: %repeat% single: %sing
                             else:
                                 self.print("  ", end='')
                             if i[0] == currentPlaylist:
+                                self.print("* ", end='')
+                            else:
+                                self.print("  ", end='')
+                            if i[0] == interPlaylist:
                                 self.print("* ", end='')
                             else:
                                 self.print("  ", end='')

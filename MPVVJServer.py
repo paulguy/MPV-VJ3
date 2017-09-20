@@ -243,8 +243,8 @@ class MPVVJServer():
         self.sendEventResponse('mpv-unexpected-termination')
 
     def stop(self):
-        self.state.stop()
         self.playing = False
+        self.state.stop()
 
     def tick(self):
         def checkPropertiesFilled():
@@ -502,10 +502,12 @@ class MPVVJServer():
                                 self.playing = True
                                 self.sendEventResponse(command)
                             except ValueError as e:
-                                self.stop()
+                                try:
+                                    self.stop()
+                                except ValueError:
+                                    pass
                                 self.sendFailureResponse(command + ": " + e.args[0])
                             except PlaylistStop:
-                                self.stop()
                                 self.sendFailureResponse(command + ": End of playlist reached.")
                         else:
                             self.sendFailureResponse(command + ": MPV isn't running.")
@@ -595,6 +597,14 @@ class MPVVJServer():
                                     self.neededProperties.append((prop, self.REPLACEMENT_NONE))
                             elif prop == 'single':
                                 self.neededProperties.append((prop, MPVVJUtils.boolYesNo(self.state.loopFile)))
+                            elif prop == 'maininterval':
+                                self.neededProperties.append((prop, self.state.TVMainTime))
+                            elif prop == 'interinterval':
+                                self.neededProperties.append((prop, self.state.TVInterTime))
+                            elif prop == 'interplaylist':
+                                self.neededProperties.append((prop, self.state.getInterPlaylistName()))
+                            elif prop == 'tvmode':
+                                self.neededProperties.append((prop, MPVVJUtils.boolYesNo(self.state.TVMode)))
                             else:
                                 if prop not in self.MPV_PROPERTY_REQUEST:
                                     self.sendFailureResponse(command + ": Unrecognized property: " + prop)
@@ -609,6 +619,7 @@ class MPVVJServer():
                         currentPlaylist = self.state.currentPlaylist
                         playingPlaylist = self.state.playingPlaylist
                         selectedPlaylist = self.state.selectedPlaylist
+                        interPlaylist = self.state.interPlaylist
                         selectedCued = None
                         try:
                             selectedCued = self.state.getSelectedPlaylistCuedPos()
@@ -620,7 +631,7 @@ class MPVVJServer():
                         except ValueError:
                             pass
 
-                        resp = {'playlists': playlists, 'current-playlist': currentPlaylist, 'playing-playlist': playingPlaylist, 'selected-playlist': selectedPlaylist, 'cued': selectedCued, 'playing': selectedPlaying}
+                        resp = {'playlists': playlists, 'current-playlist': currentPlaylist, 'playing-playlist': playingPlaylist, 'selected-playlist': selectedPlaylist, 'inter-playlist': interPlaylist, 'cued': selectedCued, 'playing': selectedPlaying,}
 
                         if playlist != None:
                             resp['playlist'] = playlist
@@ -635,6 +646,32 @@ class MPVVJServer():
                         self.sendEventResponse(command)
                         self.cleanUp()
                         return False
+                    elif obj['command'] == 'tv-intervals':
+                        command = obj['command']
+                        if 'intervals' not in obj:
+                            self.sendFailureResponse(command + ": No 'intervals'.")
+                        if type(obj['intervals']) != list:
+                            self.sendFailureResponse(command + ": 'intervals' is not a list.")
+                        if len(obj['intervals']) != 2:
+                            self.sendFailureResponse(command + ": 'intervals' is not a list of 2 items.")
+                        ret = self.state.setIntervals(obj['intervals'][0], obj['intervals'][1])
+                        if ret is not None:
+                            self.sendFailureResponse(command + ": " + ret)
+                        else:
+                            self.sendEventResponse(command)
+                    elif obj['command'] == 'tv-playlist':
+                        command = obj['command']
+                        if 'playlist' not in obj:
+                            self.sendFailureResponse(command + ": No 'playlist'.")
+                        ret = self.state.setInterPlaylist(obj['playlist'])
+                        if ret is not None:
+                            self.sendFailureResponse(command + ": " + ret)
+                        else:
+                            self.sendEventResponse(command)
+                    elif obj['command'] == 'tv-mode':
+                        command = obj['command']
+                        self.state.toggleTVMode()
+                        self.sendEventResponse(command)
                     else:
                         self.sendFailureResponse("Unknown action!")
                 else:
